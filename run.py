@@ -61,6 +61,42 @@ End your reply with a fenced JSON block exactly like:
 ```
 """
 
+SINGLE_REPO_PROMPT = """You are being benchmarked on code localization inside a single repository.
+
+You are inside a checkout of {repo} (already cloned into the current directory).
+
+Question: {question}
+
+Identify the specific file(s) that answer the question. Be minimal: only the
+file(s) where the described logic actually lives.
+
+Rules:
+- Do NOT answer from prior knowledge. Every file you name must be backed by
+  evidence you gathered in this session.
+- Verify each named file actually exists (read it, list it, or see its exact
+  path in tool output). Never guess a plausible-sounding path.
+
+End your reply with a fenced JSON block exactly like:
+```json
+{{"files": ["owner/repo:path/from/repo/root"]}}
+```
+"""
+
+SINGLE_REPO_ARM_HINTS = {
+    "grep": "Search the checkout with local tools (grep/ripgrep, ls, head, Read). The `entire` CLI is NOT available.",
+    "search": (
+        "You have the `entire` CLI (already logged in). Prefer it over walking the tree:\n"
+        '  entire search "<query>" --json --limit 5\n'
+        "It does semantic + keyword search over this repo's agent sessions, checkpoints, and commits; "
+        "results include commit info and filesTouched. Local tools are also available."
+    ),
+    "skill": (
+        "You have the `entire` Claude Code plugin installed (CLI already logged in). "
+        "Start by invoking its `entire:search` skill and follow the skill's guidance to answer. "
+        "Local tools are also available."
+    ),
+}
+
 ARM_HINTS = {
     "grep": "You may shallow-clone repos into the current directory and search them with grep/ripgrep. The `entire` CLI is NOT available.",
     "search": (
@@ -122,12 +158,20 @@ def score(gold, predicted):
     return 0.0
 
 
-def run_one(task, arm, model, timeout):
+def run_one(task, arm, model, timeout, single_repo=""):
     ws = Path(tempfile.mkdtemp(prefix=f"esb-{task['id']}-{arm}-"))
     try:
-        subprocess.run(["git", "init", "-q"], cwd=ws, check=True)
-        subprocess.run(["git", "remote", "add", "origin", ANCHOR_REMOTE], cwd=ws, check=True)
-        prompt = COMMON_PROMPT.format(question=task["question"]) + "\n" + ARM_HINTS[arm]
+        if single_repo:
+            # Warm-checkout scenario: the agent starts inside a clone of the repo.
+            subprocess.run(["git", "clone", "-q", "--depth", "1",
+                            f"git@github.com:{single_repo}.git", "."],
+                           cwd=ws, check=True, capture_output=True)
+            prompt = (SINGLE_REPO_PROMPT.format(repo=single_repo, question=task["question"])
+                      + "\n" + SINGLE_REPO_ARM_HINTS[arm])
+        else:
+            subprocess.run(["git", "init", "-q"], cwd=ws, check=True)
+            subprocess.run(["git", "remote", "add", "origin", ANCHOR_REMOTE], cwd=ws, check=True)
+            prompt = COMMON_PROMPT.format(question=task["question"]) + "\n" + ARM_HINTS[arm]
         cmd = ["claude", "-p", prompt, "--output-format", "json", "--model", model,
                *ARM_TOOL_FLAGS[arm]]
         t0 = time.monotonic()
@@ -175,6 +219,9 @@ def main():
     ap.add_argument("--arms", default="grep,search")
     ap.add_argument("--tasks", default="", help="comma-separated task ids (default all)")
     ap.add_argument("--model", default="claude-sonnet-4-6")
+    ap.add_argument("--tasks-file", default="tasks.jsonl")
+    ap.add_argument("--single-repo", default="", metavar="OWNER/REPO",
+                    help="warm-checkout mode: clone this repo into the workspace and ask single-repo questions")
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--timeout", type=int, default=600)
@@ -184,7 +231,7 @@ def main():
         selftest()
         return
 
-    tasks = [json.loads(l) for l in (HERE / "tasks.jsonl").read_text().splitlines() if l.strip()]
+    tasks = [json.loads(l) for l in (HERE / args.tasks_file).read_text().splitlines() if l.strip()]
     if args.tasks:
         keep = set(args.tasks.split(","))
         tasks = [t for t in tasks if t["id"] in keep]
@@ -198,7 +245,7 @@ def main():
 
     def worker(job):
         run, task, arm = job
-        r = run_one(task, arm, args.model, args.timeout)
+        r = run_one(task, arm, args.model, args.timeout, args.single_repo)
         r["run"] = run
         with lock:
             results.append(r)

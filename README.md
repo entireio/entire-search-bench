@@ -66,6 +66,24 @@ search: score=100/100 err=0 wall p50=36s mean=58s  cost p50=$0.10 mean=$0.15  to
 
 Raw per-run data: `results/20260803-195916/results.jsonl`.
 
+## Single-repo mode (warm checkout)
+
+`--single-repo owner/repo` clones the repo into the workspace so the agent
+starts inside a warm checkout — the "I'm already in the right repo" scenario.
+Two task sets over entirehq/entire-search (Opus 4.6, 10×10×2 each):
+
+- `tasks_singlerepo.jsonl` — keyword-rich questions: grep 100/100 31s $0.19
+  vs search 100/100 29s $0.20. Tie.
+- `tasks_singlerepo_semantic.jsonl` — questions worded so no distinctive
+  identifier from the gold file appears in the question: grep 90/100 35s
+  vs search 91/100 39s (misses shared across arms; any-of regrading puts
+  both ~99/100). Still a tie.
+
+Inside a single repo an agent with local tools is already at the floor —
+the file tree acts as a semantic index and the model greps synonyms itself.
+Search adds no penalty there; its advantage is cross-repo scope. Condensed
+write-up of all three experiments: `REPORT.md`.
+
 ## Caveats
 
 - Tasks were authored by us over our own repos: task-selection bias applies.
