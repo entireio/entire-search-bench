@@ -6,6 +6,8 @@ workspace under one of two arms:
 
   grep    - may clone entirehq repos and grep them; `entire` CLI is blocked
   search  - additionally has the `entire` CLI and is told to prefer it
+  skill   - uses the packaged `entire:search` plugin skill (entireio/skills),
+            i.e. what interactive users get via /entire:search
 
 The agent must end its reply with a JSON block {"files": ["owner/repo:path"]}.
 A run scores 1.0 if any predicted file matches any of the task's acceptable
@@ -68,11 +70,19 @@ ARM_HINTS = {
         "results include commit info and filesTouched. Inline filters like repo:owner/name work inside the query. "
         "Cloning is allowed but should rarely be needed."
     ),
+    "skill": (
+        "You have the `entire` Claude Code plugin installed (CLI already logged in). "
+        "Start by invoking its `entire:search` skill and follow the skill's guidance to answer. "
+        "Cloning is allowed but should rarely be needed."
+    ),
 }
 
 ARM_TOOL_FLAGS = {
     "grep": ["--allowedTools", "Bash,Read,Grep,Glob", "--disallowedTools", "Bash(entire:*)"],
     "search": ["--allowedTools", "Bash,Read,Grep,Glob"],
+    # skill arm measures the packaged plugin path (entireio/skills); requires
+    # `claude plugin install entire@entire-skills` on the host.
+    "skill": ["--allowedTools", "Bash,Read,Grep,Glob,Skill"],
 }
 
 

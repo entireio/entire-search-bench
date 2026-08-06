@@ -21,6 +21,7 @@ Two arms:
 |---|---|
 | `grep` | may shallow-clone any org repo and search with grep/ripgrep; the `entire` CLI is blocked (`--disallowedTools "Bash(entire:*)"`) |
 | `search` | same tools **plus** the `entire` CLI, with a hint to prefer `entire checkpoint search --all-repos` |
+| `skill` | same tools plus the packaged `entire:search` plugin skill from [entireio/skills](https://github.com/entireio/skills) — the path interactive users get via `/entire:search`. Requires `claude plugin install entire@entire-skills` on the host. Not part of the published results below. |
 
 The agent must end its reply with `{"files": ["owner/repo:path"]}`. Both arms
 are required to verify every named file exists in this session (no answering
